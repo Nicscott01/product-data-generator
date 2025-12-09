@@ -1,0 +1,17 @@
+{
+    "name": "nscott/perkins-cove-bookshop",
+    "authors": [
+        {
+            "name": "Nicolas Scott",
+            "email": "nic@crearewebsolutions.com"
+        }
+    ],
+    "require": {
+        "wordpress/wp-ai-client": "^0.2"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        }
+    }
+}
