@@ -58,9 +58,9 @@ add_action( 'init', [ REST_API::class, 'init' ], 10 );
 add_action( 'init', [ Admin_UI::class, 'init' ], 10 );
 
 // 5. Initialize Queue System
-add_action( 'init', [ Queue\Queue_Post_Type::class, 'init' ], 10 );
-add_action( 'init', [ Queue\Queue_Admin::class, 'init' ], 10 );
-add_action( 'init', [ Queue\Queue_Processor::class, 'init' ], 10 );
+add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Post_Type::class, 'init' ], 10 );
+add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Admin::class, 'init' ], 10 );
+add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Processor::class, 'init' ], 10 );
 
 /**
  * Ensure templates are initialized
