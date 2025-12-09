@@ -24,7 +24,15 @@ spl_autoload_register( function( $class ) {
         $class = str_replace( '_', '-', $class );
         $class = strtolower( $class );
         $file = PRODUCT_DATA_GENERATOR_PLUGIN_DIR . 'includes/templates/class-' . $class . '.php';
-    } else {
+    } 
+    // Handle queue subdirectory
+    elseif ( strpos( $class, 'Queue\\' ) === 0 ) {
+        $class = str_replace( 'Queue\\', '', $class );
+        $class = str_replace( '_', '-', $class );
+        $class = strtolower( $class );
+        $file = PRODUCT_DATA_GENERATOR_PLUGIN_DIR . 'includes/queue/class-' . $class . '.php';
+    } 
+    else {
         // Convert class name to file path
         $class = str_replace( '\\', '/', $class );
         $class = str_replace( '_', '-', $class );
@@ -48,6 +56,11 @@ add_action( 'init', [ REST_API::class, 'init' ], 10 );
 
 // 4. Initialize Admin UI
 add_action( 'init', [ Admin_UI::class, 'init' ], 10 );
+
+// 5. Initialize Queue System
+add_action( 'init', [ Queue\Queue_Post_Type::class, 'init' ], 10 );
+add_action( 'init', [ Queue\Queue_Admin::class, 'init' ], 10 );
+add_action( 'init', [ Queue\Queue_Processor::class, 'init' ], 10 );
 
 /**
  * Ensure templates are initialized

@@ -1,0 +1,75 @@
+/**
+ * Queue Admin Styles
+ */
+
+/* List table progress indicators */
+.pdg-progress-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pdg-progress-bar-mini {
+    width: 80px;
+    height: 12px;
+    background: #f0f0f1;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.pdg-progress-fill-mini {
+    height: 100%;
+    background: linear-gradient(90deg, #2271b1, #0a4b78);
+    transition: width 0.3s ease;
+}
+
+.pdg-progress-text-mini {
+    font-size: 12px;
+    color: #646970;
+    white-space: nowrap;
+}
+
+/* Post status badges */
+.post-type-pdg_queue .post-state {
+    font-weight: 600;
+}
+
+.post-type-pdg_queue .post-state.pdg_processing {
+    color: #2271b1;
+}
+
+.post-type-pdg_queue .post-state.pdg_completed {
+    color: #00a32a;
+}
+
+.post-type-pdg_queue .post-state.pdg_failed {
+    color: #d63638;
+}
+
+.post-type-pdg_queue .post-state.pdg_paused {
+    color: #dba617;
+}
+
+/* Column widths */
+.post-type-pdg_queue .column-pdg_progress {
+    width: 140px;
+}
+
+.post-type-pdg_queue .column-pdg_products {
+    width: 80px;
+    text-align: center;
+}
+
+.post-type-pdg_queue .column-pdg_templates {
+    width: 80px;
+    text-align: center;
+}
+
+/* Make list table responsive */
+@media screen and (max-width: 782px) {
+    .post-type-pdg_queue .column-pdg_progress,
+    .post-type-pdg_queue .column-pdg_products,
+    .post-type-pdg_queue .column-pdg_templates {
+        display: none;
+    }
+}
