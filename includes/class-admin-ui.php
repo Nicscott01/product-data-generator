@@ -90,6 +90,21 @@ class Admin_UI {
                         <p class="pdg-template-description"><?php echo esc_html( $template->get_description() ); ?></p>
                     <?php endif; ?>
 
+                    <div class="pdg-temperature-control">
+                        <label for="pdg-temp-<?php echo esc_attr( $template_id ); ?>">
+                            <?php esc_html_e( 'Temperature:', 'product-data-generator' ); ?>
+                            <span class="pdg-temp-value">0.7</span>
+                        </label>
+                        <input type="range" 
+                               id="pdg-temp-<?php echo esc_attr( $template_id ); ?>"
+                               class="pdg-temp-slider" 
+                               min="0" 
+                               max="2" 
+                               step="0.1" 
+                               value="0.7">
+                        <span class="pdg-temp-help"><?php esc_html_e( 'Lower = more focused, Higher = more creative', 'product-data-generator' ); ?></span>
+                    </div>
+
                     <div class="pdg-template-actions">
                         <button type="button" 
                                 class="button pdg-generate-btn" 
@@ -149,6 +164,41 @@ class Admin_UI {
                 font-size: 12px;
                 color: #646970;
                 margin: 0 0 8px;
+            }
+            .pdg-temperature-control {
+                margin: 8px 0;
+                padding: 8px;
+                background: #f6f7f7;
+                border-radius: 4px;
+            }
+            .pdg-temperature-control label {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                font-weight: 500;
+                margin-bottom: 4px;
+            }
+            .pdg-temp-value {
+                display: inline-block;
+                min-width: 30px;
+                padding: 2px 6px;
+                background: #2271b1;
+                color: #fff;
+                border-radius: 3px;
+                font-size: 11px;
+                text-align: center;
+            }
+            .pdg-temp-slider {
+                width: 100%;
+                margin: 4px 0;
+            }
+            .pdg-temp-help {
+                display: block;
+                font-size: 11px;
+                color: #646970;
+                font-style: italic;
+                margin-top: 4px;
             }
             .pdg-template-actions {
                 display: flex;
@@ -258,8 +308,14 @@ class Admin_UI {
                 $prompt_builder->with_text( $messages[1]['content'] );
             }
 
-            // Set reasonable defaults
-            $prompt_builder->using_temperature( 0.7 );
+            // Get temperature from request, default to 0.7
+            $temperature = isset( $_POST['temperature'] ) ? floatval( $_POST['temperature'] ) : 0.7;
+            
+            // Clamp temperature between 0 and 2
+            $temperature = max( 0, min( 2, $temperature ) );
+
+            // Set AI parameters
+            $prompt_builder->using_temperature( $temperature );
             $prompt_builder->using_max_tokens( 2000 );
 
             // Generate text

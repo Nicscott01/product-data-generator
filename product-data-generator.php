@@ -3,7 +3,7 @@
  * Plugin Name: Product Data Generator
  * Plugin URI: https://github.com/Nicscott01/product-data-generator
  * Description: A WooCommerce product data generator that uses AI to automatically generate product descriptions, short descriptions, and other product data. Includes developer hooks for customizing AI context.
- * Version: 0.0.1
+ * Version: 0.0.2
  * Author: Nic Scott
  * Author URI: https://crearewebsolutions.com
  * License: GPL v2 or later
@@ -21,7 +21,7 @@ if ( ! defined( 'WPINC' ) ) {
     die;
 }
 
-define( 'PRODUCT_DATA_GENERATOR_VERSION', '1.0.0' );
+define( 'PRODUCT_DATA_GENERATOR_VERSION', '0.0.2' );
 define( 'PRODUCT_DATA_GENERATOR_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'PRODUCT_DATA_GENERATOR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
