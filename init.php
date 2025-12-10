@@ -62,6 +62,9 @@ add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Post_Type::class, 'init'
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Admin::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Processor::class, 'init' ], 10 );
 
+// 6. Initialize Auto-Save Handler
+add_action( 'init', [ Auto_Save_Handler::class, 'init' ], 10 );
+
 /**
  * Ensure templates are initialized
  * 
