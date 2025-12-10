@@ -158,8 +158,16 @@ class Queue_Processor {
             return new \WP_Error( 'invalid_queue', __( 'Invalid queue ID.', 'product-data-generator' ) );
         }
 
-        // Check for existing processing queue
-        if ( self::has_active_queue() ) {
+        // Check for existing processing queue (excluding this one)
+        $processing = get_posts( [
+            'post_type'      => 'pdg_queue',
+            'post_status'    => 'pdg_processing',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'post__not_in'   => [ $queue_id ],
+        ] );
+
+        if ( ! empty( $processing ) ) {
             return new \WP_Error( 'queue_locked', __( 'Another queue is already processing.', 'product-data-generator' ) );
         }
 
