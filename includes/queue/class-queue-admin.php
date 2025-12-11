@@ -44,6 +44,15 @@ class Queue_Admin {
         );
 
         add_meta_box(
+            'pdg_queue_tasks',
+            __( 'Tasks to Run', 'product-data-generator' ),
+            [ __CLASS__, 'render_tasks_metabox' ],
+            'pdg_queue',
+            'normal',
+            'high'
+        );
+
+        add_meta_box(
             'pdg_queue_templates',
             __( 'Generation Settings', 'product-data-generator' ),
             [ __CLASS__, 'render_templates_metabox' ],
@@ -177,6 +186,109 @@ class Queue_Admin {
                 padding: 2px 6px;
                 border-radius: 3px;
                 font-size: 11px;
+            }
+        </style>
+        <?php
+    }
+
+    /**
+     * Render tasks selection metabox
+     */
+    public static function render_tasks_metabox( $post ) {
+        $task_options = get_post_meta( $post->ID, '_pdg_task_options', true );
+        
+        // Default all tasks enabled
+        if ( ! is_array( $task_options ) ) {
+            $task_options = [
+                'fetch_data'       => true,
+                'replace_image'    => false,
+                'generate_content' => true,
+            ];
+        }
+        ?>
+        <div class="pdg-task-options">
+            <p class="description" style="margin-bottom: 16px;">
+                <?php esc_html_e( 'Select which tasks to run for each product. Tasks are executed in the order shown.', 'product-data-generator' ); ?>
+            </p>
+
+            <div class="pdg-task-list">
+                <p class="pdg-task-item">
+                    <label>
+                        <input 
+                            type="checkbox" 
+                            name="pdg_task_fetch_data" 
+                            value="1"
+                            <?php checked( ! empty( $task_options['fetch_data'] ) ); ?>>
+                        <strong><?php esc_html_e( 'Fetch Product Data', 'product-data-generator' ); ?></strong>
+                    </label>
+                    <br>
+                    <span class="description" style="margin-left: 24px;">
+                        <?php esc_html_e( 'Run product-specific data fetchers (e.g., book data from ISBNdb, manufacturer data from CSV). Plugins can hook into this task.', 'product-data-generator' ); ?>
+                    </span>
+                </p>
+
+                <p class="pdg-task-item">
+                    <label>
+                        <input 
+                            type="checkbox" 
+                            name="pdg_task_replace_image" 
+                            value="1"
+                            <?php checked( ! empty( $task_options['replace_image'] ) ); ?>>
+                        <strong><?php esc_html_e( 'Replace Featured Image', 'product-data-generator' ); ?></strong>
+                    </label>
+                    <br>
+                    <span class="description" style="margin-left: 24px;">
+                        <?php esc_html_e( 'Update product featured images with higher resolution versions. Old images are deleted from media library.', 'product-data-generator' ); ?>
+                    </span>
+                </p>
+
+                <p class="pdg-task-item">
+                    <label>
+                        <input 
+                            type="checkbox" 
+                            name="pdg_task_generate_content" 
+                            value="1"
+                            <?php checked( ! empty( $task_options['generate_content'] ) ); ?>>
+                        <strong><?php esc_html_e( 'Generate AI Content', 'product-data-generator' ); ?></strong>
+                    </label>
+                    <br>
+                    <span class="description" style="margin-left: 24px;">
+                        <?php esc_html_e( 'Generate content using selected templates below. Uses AI credits.', 'product-data-generator' ); ?>
+                    </span>
+                </p>
+            </div>
+
+            <div class="pdg-task-note" style="margin-top: 16px; padding: 12px; background: #f0f6fc; border-left: 4px solid #2271b1; border-radius: 4px;">
+                <p style="margin: 0;">
+                    <strong><?php esc_html_e( 'Tip:', 'product-data-generator' ); ?></strong>
+                    <?php esc_html_e( 'For data maintenance (updating images, extracting metadata), uncheck "Generate AI Content" to avoid using AI credits.', 'product-data-generator' ); ?>
+                </p>
+            </div>
+        </div>
+
+        <style>
+            .pdg-task-options {
+                margin: -6px -12px -12px;
+                padding: 12px;
+            }
+            .pdg-task-list {
+                margin-bottom: 12px;
+            }
+            .pdg-task-item {
+                margin: 0 0 16px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid #dcdcde;
+            }
+            .pdg-task-item:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
+            }
+            .pdg-task-item label {
+                cursor: pointer;
+            }
+            .pdg-task-item input[type="checkbox"] {
+                margin-right: 6px;
             }
         </style>
         <?php
@@ -750,6 +862,14 @@ class Queue_Admin {
             
             update_post_meta( $post_id, '_pdg_template_config', $template_config );
         }
+
+        // Save task options
+        $task_options = [
+            'fetch_data'       => isset( $_POST['pdg_task_fetch_data'] ) ? true : false,
+            'replace_image'    => isset( $_POST['pdg_task_replace_image'] ) ? true : false,
+            'generate_content' => isset( $_POST['pdg_task_generate_content'] ) ? true : false,
+        ];
+        update_post_meta( $post_id, '_pdg_task_options', $task_options );
 
         // Save options
         if ( isset( $_POST['pdg_batch_size'] ) ) {

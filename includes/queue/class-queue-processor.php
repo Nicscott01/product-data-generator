@@ -82,7 +82,11 @@ class Queue_Processor {
 
         // Query products
         $query_args['fields'] = 'ids';
-        $query_args['posts_per_page'] = -1;
+        
+        // Only override posts_per_page if not already set
+        if ( ! isset( $query_args['posts_per_page'] ) ) {
+            $query_args['posts_per_page'] = -1;
+        }
         
         $product_ids = get_posts( $query_args );
 
@@ -196,7 +200,11 @@ class Queue_Processor {
 
         // Get products
         $query_args['fields'] = 'ids';
-        $query_args['posts_per_page'] = -1;
+        
+        // Only override posts_per_page if not already set
+        if ( ! isset( $query_args['posts_per_page'] ) ) {
+            $query_args['posts_per_page'] = -1;
+        }
         
         $product_ids = get_posts( $query_args );
 
@@ -394,6 +402,54 @@ class Queue_Processor {
         $template_config = get_post_meta( $queue_id, '_pdg_template_config', true );
         $config = isset( $template_config[ $template_id ] ) ? $template_config[ $template_id ] : [];
 
+        // Get queue task options
+        $task_options = get_post_meta( $queue_id, '_pdg_task_options', true );
+        if ( ! is_array( $task_options ) ) {
+            $task_options = [
+                'fetch_data'      => true,
+                'replace_image'   => false,
+                'generate_content' => true,
+            ];
+        }
+
+        // Run pre-generation tasks (only once per product, not per template)
+        // Use transient to track across multiple Action Scheduler executions
+        $processed_key = 'pdg_processed_' . $queue_id . '_' . $product_id;
+        $already_processed = get_transient( $processed_key );
+        
+        if ( ! $already_processed ) {
+            /**
+             * Hook for fetching/updating product data before AI generation
+             * 
+             * @param int $product_id Product ID
+             * @param array $task_options Selected task options
+             * @param int $queue_id Queue ID
+             */
+            if ( ! empty( $task_options['fetch_data'] ) ) {
+                do_action( 'pdg_queue_fetch_data', $product_id, $task_options, $queue_id );
+            }
+
+            /**
+             * Hook for replacing/upgrading product images
+             * 
+             * @param int $product_id Product ID
+             * @param array $task_options Selected task options
+             * @param int $queue_id Queue ID
+             */
+            if ( ! empty( $task_options['replace_image'] ) ) {
+                do_action( 'pdg_queue_replace_image', $product_id, $task_options, $queue_id );
+            }
+
+            // Mark as processed for this queue (expires in 1 hour to handle paused/resumed queues)
+            set_transient( $processed_key, true, HOUR_IN_SECONDS );
+        }
+
+        // Skip AI generation if not requested
+        if ( empty( $task_options['generate_content'] ) ) {
+            self::log_result( $queue_id, $product_id, $template_id, true, __( 'Skipped (content generation disabled)', 'product-data-generator' ), true );
+            return;
+        }
+
         // Get the template
         $template = Template_Registry::get( $template_id );
         
@@ -512,15 +568,20 @@ class Queue_Processor {
         // Update progress
         $progress = get_post_meta( $queue_id, '_pdg_progress', true );
         
-        if ( $success ) {
-            $progress['completed'] = isset( $progress['completed'] ) ? $progress['completed'] + 1 : 1;
+        // Don't count skipped items in completion check
+        if ( ! $skipped ) {
+            if ( $success ) {
+                $progress['completed'] = isset( $progress['completed'] ) ? $progress['completed'] + 1 : 1;
+            } else {
+                $progress['failed'] = isset( $progress['failed'] ) ? $progress['failed'] + 1 : 1;
+            }
         } else {
-            $progress['failed'] = isset( $progress['failed'] ) ? $progress['failed'] + 1 : 1;
+            $progress['skipped'] = isset( $progress['skipped'] ) ? $progress['skipped'] + 1 : 1;
         }
 
         update_post_meta( $queue_id, '_pdg_progress', $progress );
 
-        // Check if complete
+        // Check if complete (only count non-skipped items)
         $total_processed = $progress['completed'] + $progress['failed'];
         
         if ( $total_processed >= $progress['total'] ) {

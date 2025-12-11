@@ -19,6 +19,8 @@ class Queue_Post_Type {
         self::register_post_type();
         self::register_post_statuses();
         add_filter( 'display_post_states', [ __CLASS__, 'display_post_states' ], 10, 2 );
+        add_action( 'admin_head-post.php', [ __CLASS__, 'customize_publish_box' ] );
+        add_action( 'admin_head-post-new.php', [ __CLASS__, 'customize_publish_box' ] );
     }
 
     /**
@@ -109,6 +111,41 @@ class Queue_Post_Type {
             'show_in_admin_status_list' => true,
             'label_count'               => _n_noop( 'Paused <span class="count">(%s)</span>', 'Paused <span class="count">(%s)</span>', 'product-data-generator' ),
         ] );
+    }
+
+    /**
+     * Customize the publish box for queue post type
+     */
+    public static function customize_publish_box() {
+        global $post;
+        
+        if ( ! $post || $post->post_type !== 'pdg_queue' ) {
+            return;
+        }
+        
+        ?>
+        <style>
+            /* Hide the Save Draft button */
+            #save-post {
+                display: none !important;
+            }
+            
+            /* Make the publish button more prominent and clearer */
+            #publishing-action .button-primary {
+                font-weight: 600;
+            }
+        </style>
+        <script>
+            jQuery(document).ready(function($) {
+                // Change "Publish" button text to "Create Queue" for new posts
+                <?php if ( $post->post_status === 'auto-draft' || $post->post_status === 'draft' ) : ?>
+                    $('#publish').val('<?php esc_attr_e( 'Create Queue', 'product-data-generator' ); ?>');
+                <?php else : ?>
+                    $('#publish').val('<?php esc_attr_e( 'Update Queue', 'product-data-generator' ); ?>');
+                <?php endif; ?>
+            });
+        </script>
+        <?php
     }
 
     /**
