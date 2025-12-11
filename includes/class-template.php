@@ -164,6 +164,12 @@ abstract class Template {
         $system_prompt = $this->build_system_prompt();
         $user_prompt = $this->build_user_prompt();
 
+        // Inject brand voice into system prompt if configured
+        $brand_voice = Settings::get( 'brand_voice' );
+        if ( ! empty( $brand_voice ) ) {
+            $system_prompt .= "\n\n## BRAND VOICE & STYLE GUIDELINES:\n\n" . $brand_voice;
+        }
+
         $data = [
             'system_prompt' => $system_prompt,
             'user_prompt' => $user_prompt,

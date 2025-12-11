@@ -54,15 +54,18 @@ add_action( 'init', [ Template_Registry::class, 'init' ], 10 );
 // 3. Initialize REST API
 add_action( 'init', [ REST_API::class, 'init' ], 10 );
 
-// 4. Initialize Admin UI
+// 4. Initialize Settings
+add_action( 'init', [ Settings::class, 'init' ], 10 );
+
+// 5. Initialize Admin UI
 add_action( 'init', [ Admin_UI::class, 'init' ], 10 );
 
-// 5. Initialize Queue System
+// 6. Initialize Queue System
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Post_Type::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Admin::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Processor::class, 'init' ], 10 );
 
-// 6. Initialize Auto-Save Handler
+// 7. Initialize Auto-Save Handler
 add_action( 'init', [ Auto_Save_Handler::class, 'init' ], 10 );
 
 /**
