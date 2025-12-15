@@ -7,6 +7,10 @@
 (function($) {
     'use strict';
 
+    // Track pending requests to prevent page reload race condition
+    let pendingRequests = 0;
+    let needsReload = false;
+
     $(document).ready(function() {
         
         /**
@@ -45,6 +49,9 @@
             $button.prop('disabled', true);
             $status.text(pdgAdmin.i18n.generating);
 
+            // Increment pending request counter
+            pendingRequests++;
+
             // Make AJAX request
             $.ajax({
                 url: pdgAdmin.ajaxUrl,
@@ -65,13 +72,15 @@
                             // For auto-apply templates, just show success and update timestamp
                             $status.addClass('success').text('✓ Applied successfully!');
                             
-                            // Show a more prominent success notice
-                            showNotice('Content generated and applied successfully! Reloading...', 'success');
+                            // Mark that we need to reload, but don't reload yet if there are pending requests
+                            needsReload = true;
                             
-                            // Reload the page after a brief delay
-                            setTimeout(function() {
-                                location.reload();
-                            }, 1000);
+                            // Show a more prominent success notice
+                            if (pendingRequests > 1) {
+                                showNotice('Content generated and applied successfully! Waiting for other requests...', 'success');
+                            } else {
+                                showNotice('Content generated and applied successfully! Reloading...', 'success');
+                            }
                             
                         } else {
                             // For manual templates (description, short description, etc), show preview
@@ -113,6 +122,16 @@
                     // Remove loading state
                     $item.removeClass('is-loading');
                     $button.prop('disabled', false);
+                    
+                    // Decrement pending request counter
+                    pendingRequests--;
+                    
+                    // If all requests are complete and we need to reload, do it now
+                    if (pendingRequests === 0 && needsReload) {
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
+                    }
                 }
             });
         });
