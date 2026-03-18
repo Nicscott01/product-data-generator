@@ -162,6 +162,10 @@ class Queue_Processor {
             return new \WP_Error( 'invalid_queue', __( 'Invalid queue ID.', 'product-data-generator' ) );
         }
 
+        if ( $queue->post_status === 'pdg_processing' ) {
+            return new \WP_Error( 'queue_already_processing', __( 'This queue is already processing.', 'product-data-generator' ) );
+        }
+
         // Check for existing processing queue (excluding this one)
         $processing = get_posts( [
             'post_type'      => 'pdg_queue',
@@ -246,12 +250,16 @@ class Queue_Processor {
             'total'              => count( $work_items ),
             'completed'          => 0,
             'failed'             => 0,
+            'skipped'            => 0,
             'started_at'         => current_time( 'timestamp' ),
             'current_product_id' => null,
         ];
+        $run_token = wp_generate_password( 12, false, false );
 
         update_post_meta( $queue_id, '_pdg_progress', $progress );
         update_post_meta( $queue_id, '_pdg_work_items', $work_items );
+        update_post_meta( $queue_id, '_pdg_product_states', self::build_product_states( $work_items ) );
+        update_post_meta( $queue_id, '_pdg_run_token', $run_token );
         update_post_meta( $queue_id, '_pdg_results', [] );
 
         // Update queue status
@@ -412,36 +420,33 @@ class Queue_Processor {
             ];
         }
 
+        $product_state = self::get_product_state( $queue_id, $product_id );
+
         // Run pre-generation tasks (only once per product, not per template)
         // Use transient to track across multiple Action Scheduler executions
-        $processed_key = 'pdg_processed_' . $queue_id . '_' . $product_id;
+        $run_token = (string) get_post_meta( $queue_id, '_pdg_run_token', true );
+        $processed_key = 'pdg_processed_' . md5( $queue_id . '|' . $product_id . '|' . $run_token );
         $already_processed = get_transient( $processed_key );
         
-        if ( ! $already_processed ) {
-            /**
-             * Hook for fetching/updating product data before AI generation
-             * 
-             * @param int $product_id Product ID
-             * @param array $task_options Selected task options
-             * @param int $queue_id Queue ID
-             */
-            if ( ! empty( $task_options['fetch_data'] ) ) {
-                do_action( 'pdg_queue_fetch_data', $product_id, $task_options, $queue_id );
-            }
+        if ( empty( $product_state['pre_tasks_ran'] ) && ! $already_processed ) {
+            $pre_task_result = self::run_pre_generation_tasks( $product_id, $task_options, $queue_id );
 
-            /**
-             * Hook for replacing/upgrading product images
-             * 
-             * @param int $product_id Product ID
-             * @param array $task_options Selected task options
-             * @param int $queue_id Queue ID
-             */
-            if ( ! empty( $task_options['replace_image'] ) ) {
-                do_action( 'pdg_queue_replace_image', $product_id, $task_options, $queue_id );
-            }
+            $product_state['pre_tasks_ran'] = true;
+            $product_state['pre_task_failed'] = is_wp_error( $pre_task_result );
+            $product_state['pre_task_message'] = is_wp_error( $pre_task_result ) ? $pre_task_result->get_error_message() : '';
+
+            self::save_product_state( $queue_id, $product_id, $product_state );
 
             // Mark as processed for this queue (expires in 1 hour to handle paused/resumed queues)
             set_transient( $processed_key, true, HOUR_IN_SECONDS );
+        } elseif ( empty( $product_state['pre_tasks_ran'] ) ) {
+            $product_state = self::get_product_state( $queue_id, $product_id );
+        }
+
+        if ( ! empty( $product_state['pre_task_failed'] ) ) {
+            /* translators: %s: pre-processing error message */
+            self::log_result( $queue_id, $product_id, $template_id, false, sprintf( __( 'Pre-processing failed: %s', 'product-data-generator' ), $product_state['pre_task_message'] ) );
+            return;
         }
 
         // Skip AI generation if not requested
@@ -568,7 +573,7 @@ class Queue_Processor {
         // Update progress
         $progress = get_post_meta( $queue_id, '_pdg_progress', true );
         
-        // Don't count skipped items in completion check
+        // Update the processed counters for queue completion.
         if ( ! $skipped ) {
             if ( $success ) {
                 $progress['completed'] = isset( $progress['completed'] ) ? $progress['completed'] + 1 : 1;
@@ -581,8 +586,10 @@ class Queue_Processor {
 
         update_post_meta( $queue_id, '_pdg_progress', $progress );
 
-        // Check if complete (only count non-skipped items)
-        $total_processed = $progress['completed'] + $progress['failed'];
+        self::record_product_result( $queue_id, $product_id, $template_id, $success, $skipped, $message );
+
+        // Check if complete.
+        $total_processed = $progress['completed'] + $progress['failed'] + $progress['skipped'];
         
         if ( $total_processed >= $progress['total'] ) {
             self::complete_queue( $queue_id );
@@ -611,6 +618,248 @@ class Queue_Processor {
         ] );
 
         do_action( 'product_data_generator_queue_completed', $queue_id, $progress );
+    }
+
+    /**
+     * Build per-product state records for the queue.
+     *
+     * @param array $work_items Queue work items.
+     * @return array
+     */
+    private static function build_product_states( $work_items ) {
+        $product_states = [];
+
+        foreach ( $work_items as $item ) {
+            $product_id = isset( $item['product_id'] ) ? (int) $item['product_id'] : 0;
+            $template_id = isset( $item['template_id'] ) ? (string) $item['template_id'] : '';
+
+            if ( ! $product_id || '' === $template_id ) {
+                continue;
+            }
+
+            if ( ! isset( $product_states[ $product_id ] ) ) {
+                $product_states[ $product_id ] = self::create_product_state();
+            }
+
+            if ( ! in_array( $template_id, $product_states[ $product_id ]['expected_templates'], true ) ) {
+                $product_states[ $product_id ]['expected_templates'][] = $template_id;
+            }
+        }
+
+        return $product_states;
+    }
+
+    /**
+     * Create a default product state record.
+     *
+     * @return array
+     */
+    private static function create_product_state() {
+        return [
+            'expected_templates'  => [],
+            'template_results'    => [],
+            'pre_tasks_ran'       => false,
+            'pre_task_failed'     => false,
+            'pre_task_message'    => '',
+            'post_actions_applied' => false,
+            'post_action_failed'  => false,
+            'post_action_message' => '',
+            'finalized'           => false,
+        ];
+    }
+
+    /**
+     * Get a product state record for a queue.
+     *
+     * @param int $queue_id Queue post ID.
+     * @param int $product_id Product ID.
+     * @return array
+     */
+    private static function get_product_state( $queue_id, $product_id ) {
+        $states = get_post_meta( $queue_id, '_pdg_product_states', true );
+
+        if ( ! is_array( $states ) ) {
+            return self::create_product_state();
+        }
+
+        return isset( $states[ $product_id ] ) && is_array( $states[ $product_id ] )
+            ? wp_parse_args( $states[ $product_id ], self::create_product_state() )
+            : self::create_product_state();
+    }
+
+    /**
+     * Save a product state record for a queue.
+     *
+     * @param int   $queue_id Queue post ID.
+     * @param int   $product_id Product ID.
+     * @param array $state Product state.
+     */
+    private static function save_product_state( $queue_id, $product_id, array $state ) {
+        $states = get_post_meta( $queue_id, '_pdg_product_states', true );
+
+        if ( ! is_array( $states ) ) {
+            $states = [];
+        }
+
+        $states[ $product_id ] = $state;
+
+        update_post_meta( $queue_id, '_pdg_product_states', $states );
+    }
+
+    /**
+     * Run pre-generation tasks for a product.
+     *
+     * @param int   $product_id Product ID.
+     * @param array $task_options Queue task options.
+     * @param int   $queue_id Queue post ID.
+     * @return true|\WP_Error
+     */
+    private static function run_pre_generation_tasks( $product_id, $task_options, $queue_id ) {
+        try {
+            if ( ! empty( $task_options['fetch_data'] ) ) {
+                do_action( 'pdg_queue_fetch_data', $product_id, $task_options, $queue_id );
+            }
+
+            if ( ! empty( $task_options['replace_image'] ) ) {
+                do_action( 'pdg_queue_replace_image', $product_id, $task_options, $queue_id );
+            }
+        } catch ( \Throwable $throwable ) {
+            return new \WP_Error( 'pre_processing_failed', $throwable->getMessage() );
+        }
+
+        return true;
+    }
+
+    /**
+     * Record a template result against the owning product.
+     *
+     * @param int    $queue_id Queue post ID.
+     * @param int    $product_id Product ID.
+     * @param string $template_id Template ID.
+     * @param bool   $success Whether the template succeeded.
+     * @param bool   $skipped Whether the template was skipped.
+     * @param string $message Result message.
+     */
+    private static function record_product_result( $queue_id, $product_id, $template_id, $success, $skipped, $message ) {
+        $state = self::get_product_state( $queue_id, $product_id );
+
+        if ( ! in_array( $template_id, $state['expected_templates'], true ) ) {
+            $state['expected_templates'][] = $template_id;
+        }
+
+        $state['template_results'][ $template_id ] = [
+            'success' => (bool) $success,
+            'skipped' => (bool) $skipped,
+            'message' => (string) $message,
+        ];
+
+        self::save_product_state( $queue_id, $product_id, $state );
+        self::maybe_finalize_product( $queue_id, $product_id );
+    }
+
+    /**
+     * Finalize product processing once all expected templates are accounted for.
+     *
+     * @param int $queue_id Queue post ID.
+     * @param int $product_id Product ID.
+     */
+    private static function maybe_finalize_product( $queue_id, $product_id ) {
+        $state = self::get_product_state( $queue_id, $product_id );
+
+        if ( ! empty( $state['finalized'] ) || empty( $state['expected_templates'] ) ) {
+            return;
+        }
+
+        foreach ( $state['expected_templates'] as $template_id ) {
+            if ( ! isset( $state['template_results'][ $template_id ] ) ) {
+                return;
+            }
+        }
+
+        $has_failure = ! empty( $state['pre_task_failed'] );
+        $successful_items = 0;
+
+        foreach ( $state['template_results'] as $result ) {
+            if ( ! empty( $result['skipped'] ) ) {
+                continue;
+            }
+
+            if ( empty( $result['success'] ) ) {
+                $has_failure = true;
+            } else {
+                $successful_items++;
+            }
+        }
+
+        if ( ! $has_failure && $successful_items > 0 ) {
+            $post_action_result = self::apply_post_actions( $queue_id, $product_id );
+
+            if ( is_wp_error( $post_action_result ) ) {
+                $state['post_action_failed'] = true;
+                $state['post_action_message'] = $post_action_result->get_error_message();
+            } else {
+                $state['post_actions_applied'] = true;
+            }
+        }
+
+        $state['finalized'] = true;
+        self::save_product_state( $queue_id, $product_id, $state );
+    }
+
+    /**
+     * Run configured post-queue actions for a product.
+     *
+     * @param int $queue_id Queue post ID.
+     * @param int $product_id Product ID.
+     * @return true|\WP_Error
+     */
+    private static function apply_post_actions( $queue_id, $product_id ) {
+        $post_actions = get_post_meta( $queue_id, '_pdg_post_actions', true );
+
+        if ( ! is_array( $post_actions ) ) {
+            return true;
+        }
+
+        $change_status = isset( $post_actions['change_post_status'] ) && is_array( $post_actions['change_post_status'] )
+            ? $post_actions['change_post_status']
+            : [];
+
+        if ( empty( $change_status['enabled'] ) ) {
+            return true;
+        }
+
+        $target_status = ! empty( $change_status['status'] ) ? sanitize_key( $change_status['status'] ) : 'publish';
+
+        if ( ! get_post_status_object( $target_status ) ) {
+            return new \WP_Error( 'invalid_post_action_status', __( 'Configured post status is invalid.', 'product-data-generator' ) );
+        }
+
+        if ( get_post_status( $product_id ) === $target_status ) {
+            return true;
+        }
+
+        $result = wp_update_post(
+            [
+                'ID'          => $product_id,
+                'post_status' => $target_status,
+            ],
+            true
+        );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        /**
+         * Fires after post-queue actions have run successfully for a product.
+         *
+         * @param int $queue_id Queue post ID.
+         * @param int $product_id Product ID.
+         * @param array $post_actions Configured post actions.
+         */
+        do_action( 'product_data_generator_queue_post_actions_completed', $queue_id, $product_id, $post_actions );
+
+        return true;
     }
 
     /**

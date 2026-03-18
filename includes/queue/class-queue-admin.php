@@ -71,6 +71,24 @@ class Queue_Admin {
         );
 
         add_meta_box(
+            'pdg_queue_cron',
+            __( 'Cron Queue', 'product-data-generator' ),
+            [ __CLASS__, 'render_cron_metabox' ],
+            'pdg_queue',
+            'side',
+            'default'
+        );
+
+        add_meta_box(
+            'pdg_queue_post_actions',
+            __( 'Post-Queue Actions', 'product-data-generator' ),
+            [ __CLASS__, 'render_post_actions_metabox' ],
+            'pdg_queue',
+            'side',
+            'default'
+        );
+
+        add_meta_box(
             'pdg_queue_preview',
             __( 'Preview & Start', 'product-data-generator' ),
             [ __CLASS__, 'render_preview_metabox' ],
@@ -130,6 +148,10 @@ class Queue_Admin {
                     <li>
                         <code>['meta_query' => [['key' => '_stock_status', 'value' => 'instock']]]</code> - 
                         <?php esc_html_e( 'Products in stock', 'product-data-generator' ); ?>
+                    </li>
+                    <li>
+                        <code>['post_status' => 'draft', 'meta_query' => [['key' => '_wclsi_sync', 'value' => '1']]]</code> -
+                        <?php esc_html_e( 'Draft Lightspeed products waiting for generation', 'product-data-generator' ); ?>
                     </li>
                 </ul>
             </div>
@@ -524,6 +546,150 @@ class Queue_Admin {
     }
 
     /**
+     * Render cron configuration metabox.
+     */
+    public static function render_cron_metabox( $post ) {
+        $settings = Queue_Cron::get_settings( $post->ID );
+        $next_run = Queue_Cron::get_next_run( $post->ID );
+        $last_run = get_post_meta( $post->ID, '_pdg_cron_last_run', true );
+        $last_result = get_post_meta( $post->ID, '_pdg_cron_last_result', true );
+        ?>
+        <div class="pdg-cron-settings">
+            <p class="pdg-option-row">
+                <label for="pdg-cron-enabled">
+                    <input
+                        type="checkbox"
+                        id="pdg-cron-enabled"
+                        name="pdg_cron_enabled"
+                        value="1"
+                        <?php checked( ! empty( $settings['enabled'] ) ); ?>>
+                    <?php esc_html_e( 'Enable recurring cron runs', 'product-data-generator' ); ?>
+                </label>
+            </p>
+
+            <p class="pdg-option-row">
+                <label for="pdg-cron-interval">
+                    <strong><?php esc_html_e( 'Run Every', 'product-data-generator' ); ?></strong><br>
+                    <input
+                        type="number"
+                        id="pdg-cron-interval"
+                        name="pdg_cron_interval_minutes"
+                        value="<?php echo esc_attr( $settings['interval_minutes'] ); ?>"
+                        min="1"
+                        step="1"
+                        class="small-text">
+                    <span class="description"><?php esc_html_e( 'minutes', 'product-data-generator' ); ?></span>
+                </label>
+            </p>
+
+            <div class="pdg-cron-note">
+                <p>
+                    <strong><?php esc_html_e( 'How it works:', 'product-data-generator' ); ?></strong>
+                    <?php esc_html_e( 'The queue definition stays reusable. Each scheduled run uses this queue’s current rules and skips products that no longer need work.', 'product-data-generator' ); ?>
+                </p>
+            </div>
+
+            <?php if ( $next_run ) : ?>
+                <p class="description">
+                    <strong><?php esc_html_e( 'Next run:', 'product-data-generator' ); ?></strong>
+                    <?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_run ) ); ?>
+                </p>
+            <?php endif; ?>
+
+            <?php if ( $last_run ) : ?>
+                <p class="description">
+                    <strong><?php esc_html_e( 'Last attempt:', 'product-data-generator' ); ?></strong>
+                    <?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) $last_run ) ); ?>
+                </p>
+            <?php endif; ?>
+
+            <?php if ( $last_result ) : ?>
+                <p class="description">
+                    <strong><?php esc_html_e( 'Last result:', 'product-data-generator' ); ?></strong>
+                    <?php echo esc_html( $last_result ); ?>
+                </p>
+            <?php endif; ?>
+        </div>
+
+        <style>
+            .pdg-cron-settings {
+                margin: -6px -12px -12px;
+                padding: 12px;
+            }
+            .pdg-cron-note {
+                margin: 12px 0;
+                padding: 12px;
+                background: #f6f7f7;
+                border-left: 4px solid #2271b1;
+                border-radius: 4px;
+            }
+            .pdg-cron-note p {
+                margin: 0;
+            }
+        </style>
+        <?php
+    }
+
+    /**
+     * Render post-queue actions metabox.
+     */
+    public static function render_post_actions_metabox( $post ) {
+        $post_actions = get_post_meta( $post->ID, '_pdg_post_actions', true );
+
+        if ( ! is_array( $post_actions ) ) {
+            $post_actions = [];
+        }
+
+        $change_status = isset( $post_actions['change_post_status'] ) && is_array( $post_actions['change_post_status'] )
+            ? $post_actions['change_post_status']
+            : [];
+        $is_enabled = ! empty( $change_status['enabled'] );
+        $target_status = ! empty( $change_status['status'] ) ? $change_status['status'] : 'publish';
+        ?>
+        <div class="pdg-post-actions">
+            <p class="description">
+                <?php esc_html_e( 'These actions only run after every enabled, non-skipped step succeeds for a product.', 'product-data-generator' ); ?>
+            </p>
+
+            <p class="pdg-option-row">
+                <label for="pdg-post-action-status-enabled">
+                    <input
+                        type="checkbox"
+                        id="pdg-post-action-status-enabled"
+                        name="pdg_post_action_change_status_enabled"
+                        value="1"
+                        <?php checked( $is_enabled ); ?>>
+                    <?php esc_html_e( 'Change product post status', 'product-data-generator' ); ?>
+                </label>
+            </p>
+
+            <p class="pdg-option-row">
+                <label for="pdg-post-action-status">
+                    <strong><?php esc_html_e( 'Target Status', 'product-data-generator' ); ?></strong><br>
+                    <select
+                        id="pdg-post-action-status"
+                        name="pdg_post_action_change_status"
+                        <?php disabled( ! $is_enabled ); ?>>
+                        <option value="publish" <?php selected( $target_status, 'publish' ); ?>><?php esc_html_e( 'Publish', 'product-data-generator' ); ?></option>
+                        <option value="draft" <?php selected( $target_status, 'draft' ); ?>><?php esc_html_e( 'Draft', 'product-data-generator' ); ?></option>
+                        <option value="pending" <?php selected( $target_status, 'pending' ); ?>><?php esc_html_e( 'Pending Review', 'product-data-generator' ); ?></option>
+                        <option value="private" <?php selected( $target_status, 'private' ); ?>><?php esc_html_e( 'Private', 'product-data-generator' ); ?></option>
+                    </select>
+                </label>
+            </p>
+        </div>
+
+        <script>
+            jQuery(document).ready(function($) {
+                $('#pdg-post-action-status-enabled').on('change', function() {
+                    $('#pdg-post-action-status').prop('disabled', !$(this).is(':checked'));
+                });
+            });
+        </script>
+        <?php
+    }
+
+    /**
      * Render preview metabox
      */
     public static function render_preview_metabox( $post ) {
@@ -704,8 +870,10 @@ class Queue_Admin {
         $total = isset( $progress['total'] ) ? $progress['total'] : 0;
         $completed = isset( $progress['completed'] ) ? $progress['completed'] : 0;
         $failed = isset( $progress['failed'] ) ? $progress['failed'] : 0;
+        $skipped = isset( $progress['skipped'] ) ? $progress['skipped'] : 0;
         $current_product = isset( $progress['current_product_id'] ) ? $progress['current_product_id'] : 0;
-        $percentage = $total > 0 ? round( ( $completed / $total ) * 100 ) : 0;
+        $processed = $completed + $failed + $skipped;
+        $percentage = $total > 0 ? round( ( $processed / $total ) * 100 ) : 0;
 
         ?>
         <div class="pdg-queue-progress">
@@ -716,7 +884,7 @@ class Queue_Admin {
                 <div class="pdg-progress-text">
                     <?php 
                     // translators: 1: completed count, 2: total count, 3: percentage
-                    printf( esc_html__( '%1$d of %2$d (%3$d%%)', 'product-data-generator' ), $completed, $total, $percentage ); 
+                    printf( esc_html__( '%1$d of %2$d (%3$d%%)', 'product-data-generator' ), $processed, $total, $percentage ); 
                     ?>
                 </div>
             </div>
@@ -731,8 +899,12 @@ class Queue_Admin {
                     <span class="pdg-progress-stat-value pdg-error"><?php echo esc_html( $failed ); ?></span>
                 </div>
                 <div class="pdg-progress-stat">
+                    <span class="pdg-progress-stat-label"><?php esc_html_e( 'Skipped:', 'product-data-generator' ); ?></span>
+                    <span class="pdg-progress-stat-value"><?php echo esc_html( $skipped ); ?></span>
+                </div>
+                <div class="pdg-progress-stat">
                     <span class="pdg-progress-stat-label"><?php esc_html_e( 'Remaining:', 'product-data-generator' ); ?></span>
-                    <span class="pdg-progress-stat-value"><?php echo esc_html( $total - $completed - $failed ); ?></span>
+                    <span class="pdg-progress-stat-value"><?php echo esc_html( max( 0, $total - $processed ) ); ?></span>
                 </div>
             </div>
 
@@ -885,6 +1057,20 @@ class Queue_Admin {
         } else {
             delete_post_meta( $post_id, '_pdg_retry_failed' );
         }
+
+        $cron_settings = [
+            'enabled'          => isset( $_POST['pdg_cron_enabled'] ),
+            'interval_minutes' => isset( $_POST['pdg_cron_interval_minutes'] ) ? max( 1, absint( $_POST['pdg_cron_interval_minutes'] ) ) : 15,
+        ];
+        update_post_meta( $post_id, '_pdg_cron_settings', $cron_settings );
+
+        $post_actions = [
+            'change_post_status' => [
+                'enabled' => isset( $_POST['pdg_post_action_change_status_enabled'] ),
+                'status'  => isset( $_POST['pdg_post_action_change_status'] ) ? sanitize_key( wp_unslash( $_POST['pdg_post_action_change_status'] ) ) : 'publish',
+            ],
+        ];
+        update_post_meta( $post_id, '_pdg_post_actions', $post_actions );
     }
 
     /**
@@ -1058,13 +1244,16 @@ class Queue_Admin {
                 if ( is_array( $progress ) && ! empty( $progress ) ) {
                     $total = isset( $progress['total'] ) ? $progress['total'] : 0;
                     $completed = isset( $progress['completed'] ) ? $progress['completed'] : 0;
-                    $percentage = $total > 0 ? round( ( $completed / $total ) * 100 ) : 0;
+                    $failed = isset( $progress['failed'] ) ? $progress['failed'] : 0;
+                    $skipped = isset( $progress['skipped'] ) ? $progress['skipped'] : 0;
+                    $processed = $completed + $failed + $skipped;
+                    $percentage = $total > 0 ? round( ( $processed / $total ) * 100 ) : 0;
                     
                     echo '<div class="pdg-progress-mini">';
                     echo '<div class="pdg-progress-bar-mini">';
                     echo '<div class="pdg-progress-fill-mini" style="width: ' . esc_attr( $percentage ) . '%;"></div>';
                     echo '</div>';
-                    echo '<span class="pdg-progress-text-mini">' . esc_html( $completed . '/' . $total ) . '</span>';
+                    echo '<span class="pdg-progress-text-mini">' . esc_html( $processed . '/' . $total ) . '</span>';
                     echo '</div>';
                 } else {
                     echo '<span class="pdg-progress-text-mini">—</span>';

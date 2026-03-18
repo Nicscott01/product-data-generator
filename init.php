@@ -64,6 +64,7 @@ add_action( 'init', [ Admin_UI::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Post_Type::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Admin::class, 'init' ], 10 );
 add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Processor::class, 'init' ], 10 );
+add_action( 'init', [ \ProductDataGenerator\Queue\Queue_Cron::class, 'init' ], 10 );
 
 // 7. Initialize Auto-Save Handler
 add_action( 'init', [ Auto_Save_Handler::class, 'init' ], 10 );
@@ -146,5 +147,4 @@ function generate_product_content( $product_id, $template_id = 'product_descript
  * ];
  * $result = ProductDataGenerator\generate_product_content( $product_id, 'product_description', $config );
  */
-
 
