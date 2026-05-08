@@ -6,6 +6,7 @@
             "email": "nic@crearewebsolutions.com"
         }
     ],
+    "type": "wordpress-plugin",
     "require": {
         "wordpress/wp-ai-client": "^0.2"
     },
