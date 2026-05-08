@@ -151,23 +151,17 @@ class AI_Generator {
             // Build the prompt with system instruction and user message
             $prompt_builder = AI_Client::prompt_with_wp_error();
             
-            // Set system instruction if available
-            if ( ! empty( $messages[0]['content'] ) && $messages[0]['role'] === 'system' ) {
-                $prompt_builder->using_system_instruction( $messages[0]['content'] );
-            }
-            
-            // Add user message
-            if ( ! empty( $messages[1]['content'] ) && $messages[1]['role'] === 'user' ) {
-                $prompt_builder->with_text( $messages[1]['content'] );
-            }
-            
-            // Set temperature and max tokens
-            if ( isset( $params['temperature'] ) ) {
-                $prompt_builder->using_temperature( (float) $params['temperature'] );
-            }
-            if ( isset( $params['max_tokens'] ) ) {
-                $prompt_builder->using_max_tokens( (int) $params['max_tokens'] );
-            }
+            self::apply_messages_to_prompt_builder( $prompt_builder, $messages );
+            self::apply_settings_to_prompt_builder(
+                $prompt_builder,
+                isset( $params['temperature'] ) ? (float) $params['temperature'] : null,
+                isset( $params['max_tokens'] ) ? (int) $params['max_tokens'] : null,
+                [
+                    'source'      => 'generator',
+                    'template_id' => $this->config->get_template_id(),
+                    'product_id'  => $this->config->get_product_id(),
+                ]
+            );
             
             // Generate text
             $content = $prompt_builder->generate_text();
@@ -225,7 +219,54 @@ class AI_Generator {
         }
     }
 
+    /**
+     * Apply template messages to a WP AI Client prompt builder.
+     *
+     * @param object $prompt_builder Prompt builder instance.
+     * @param array  $messages Template messages.
+     */
+    public static function apply_messages_to_prompt_builder( $prompt_builder, array $messages ) {
+        if ( ! empty( $messages[0]['content'] ) && isset( $messages[0]['role'] ) && 'system' === $messages[0]['role'] ) {
+            $prompt_builder->using_system_instruction( $messages[0]['content'] );
+        }
 
+        if ( ! empty( $messages[1]['content'] ) && isset( $messages[1]['role'] ) && 'user' === $messages[1]['role'] ) {
+            $prompt_builder->with_text( $messages[1]['content'] );
+        }
+    }
+
+    /**
+     * Apply supported AI settings to a WP AI Client prompt builder.
+     *
+     * Temperature is intentionally omitted by default because current upstream
+     * models can reject it with a 400 response. Sites that use a model which
+     * still supports temperature can re-enable it with the filter below.
+     *
+     * @param object     $prompt_builder Prompt builder instance.
+     * @param float|null $temperature Temperature value.
+     * @param int|null   $max_tokens Maximum output tokens.
+     * @param array      $context Request context.
+     */
+    public static function apply_settings_to_prompt_builder( $prompt_builder, $temperature = null, $max_tokens = null, array $context = [] ) {
+        if ( null !== $max_tokens ) {
+            $prompt_builder->using_max_tokens( (int) $max_tokens );
+        }
+
+        /**
+         * Filter whether Product Data Generator sends temperature to the AI client.
+         *
+         * Default false avoids models that now reject `temperature` as deprecated.
+         *
+         * @param bool       $send_temperature Whether to send temperature.
+         * @param float|null $temperature Temperature value.
+         * @param array      $context Request context.
+         */
+        $send_temperature = (bool) apply_filters( 'product_data_generator_send_temperature', false, $temperature, $context );
+
+        if ( $send_temperature && null !== $temperature ) {
+            $prompt_builder->using_temperature( (float) $temperature );
+        }
+    }
 
     /**
      * Format content based on output format
@@ -434,27 +475,24 @@ class AI_Generator {
          */
         do_action( 'product_data_generator_log_response', $log_entry, $this );
 
-        // Write to debug log if no custom logging handler is attached
-        if ( ! has_action( 'product_data_generator_log_response' ) ) {
-            if ( $error ) {
-                error_log( sprintf(
-                    "[Product Data Generator] RESPONSE ERROR\nTemplate: %s\nProduct: #%d - %s\nError Code: %s\nError Message: %s",
-                    $log_entry['template_id'],
-                    $log_entry['product_id'],
-                    $log_entry['product_name'],
-                    $error->get_error_code(),
-                    $error->get_error_message()
-                ) );
-            } else {
-                error_log( sprintf(
-                    "[Product Data Generator] RESPONSE RECEIVED\nTemplate: %s\nProduct: #%d - %s\nContent Length: %d chars\n---\nRESPONSE:\n%s\n---",
-                    $log_entry['template_id'],
-                    $log_entry['product_id'],
-                    $log_entry['product_name'],
-                    strlen( $result['raw_content'] ),
-                    $result['raw_content']
-                ) );
-            }
+        if ( $error ) {
+            error_log( sprintf(
+                "[Product Data Generator] RESPONSE ERROR\nTemplate: %s\nProduct: #%d - %s\nError Code: %s\nError Message: %s",
+                $log_entry['template_id'],
+                $log_entry['product_id'],
+                $log_entry['product_name'],
+                $error->get_error_code(),
+                $error->get_error_message()
+            ) );
+        } elseif ( ! has_action( 'product_data_generator_log_response' ) ) {
+            error_log( sprintf(
+                "[Product Data Generator] RESPONSE RECEIVED\nTemplate: %s\nProduct: #%d - %s\nContent Length: %d chars\n---\nRESPONSE:\n%s\n---",
+                $log_entry['template_id'],
+                $log_entry['product_id'],
+                $log_entry['product_name'],
+                strlen( $result['raw_content'] ),
+                $result['raw_content']
+            ) );
         }
     }
 }

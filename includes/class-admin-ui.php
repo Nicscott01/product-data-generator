@@ -298,15 +298,7 @@ class Admin_UI {
 
             $prompt_builder = \WordPress\AI_Client\AI_Client::prompt_with_wp_error();
 
-            // Set system instruction if available
-            if ( ! empty( $messages[0]['content'] ) && $messages[0]['role'] === 'system' ) {
-                $prompt_builder->using_system_instruction( $messages[0]['content'] );
-            }
-
-            // Add user message
-            if ( ! empty( $messages[1]['content'] ) && $messages[1]['role'] === 'user' ) {
-                $prompt_builder->with_text( $messages[1]['content'] );
-            }
+            AI_Generator::apply_messages_to_prompt_builder( $prompt_builder, $messages );
 
             // Get temperature from request, default to 0.7
             $temperature = isset( $_POST['temperature'] ) ? floatval( $_POST['temperature'] ) : 0.7;
@@ -314,14 +306,29 @@ class Admin_UI {
             // Clamp temperature between 0 and 2
             $temperature = max( 0, min( 2, $temperature ) );
 
-            // Set AI parameters
-            $prompt_builder->using_temperature( $temperature );
-            $prompt_builder->using_max_tokens( 2000 );
+            AI_Generator::apply_settings_to_prompt_builder(
+                $prompt_builder,
+                $temperature,
+                2000,
+                [
+                    'source'      => 'admin_ajax',
+                    'template_id' => $template_id,
+                    'product_id'  => $product_id,
+                ]
+            );
 
             // Generate text
             $result = $prompt_builder->generate_text();
 
             if ( is_wp_error( $result ) ) {
+                error_log( sprintf(
+                    '[Product Data Generator] Manual generation failed | Product #%d - %s | Template: %s | Error Code: %s | Error Message: %s',
+                    $product_id,
+                    $product->get_name(),
+                    $template_id,
+                    $result->get_error_code(),
+                    $result->get_error_message()
+                ) );
                 wp_send_json_error( [ 
                     'message' => $result->get_error_message(),
                 ] );
@@ -345,6 +352,12 @@ class Admin_UI {
             ] );
 
         } catch ( \Exception $e ) {
+            error_log( sprintf(
+                '[Product Data Generator] Manual generation exception | Product #%d | Template: %s | Error Message: %s',
+                $product_id,
+                $template_id,
+                $e->getMessage()
+            ) );
             wp_send_json_error( [ 
                 'message' => $e->getMessage(),
             ] );

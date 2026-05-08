@@ -9,6 +9,7 @@
 
 namespace ProductDataGenerator\Queue;
 
+use ProductDataGenerator\AI_Generator;
 use ProductDataGenerator\Template_Registry;
 
 defined( 'ABSPATH' ) || exit;
@@ -496,23 +497,23 @@ class Queue_Processor {
 
             $prompt_builder = \WordPress\AI_Client\AI_Client::prompt_with_wp_error();
 
-            // Set system instruction
-            if ( ! empty( $messages[0]['content'] ) && $messages[0]['role'] === 'system' ) {
-                $prompt_builder->using_system_instruction( $messages[0]['content'] );
-            }
-
-            // Add user message
-            if ( ! empty( $messages[1]['content'] ) && $messages[1]['role'] === 'user' ) {
-                $prompt_builder->with_text( $messages[1]['content'] );
-            }
+            AI_Generator::apply_messages_to_prompt_builder( $prompt_builder, $messages );
 
             // Get temperature from config
             $temperature = isset( $config['temperature'] ) ? floatval( $config['temperature'] ) : 0.7;
             $temperature = max( 0, min( 2, $temperature ) );
 
-            // Set AI parameters
-            $prompt_builder->using_temperature( $temperature );
-            $prompt_builder->using_max_tokens( 2000 );
+            AI_Generator::apply_settings_to_prompt_builder(
+                $prompt_builder,
+                $temperature,
+                2000,
+                [
+                    'source'      => 'queue',
+                    'queue_id'    => $queue_id,
+                    'template_id' => $template_id,
+                    'product_id'  => $product_id,
+                ]
+            );
 
             // Generate content
             $result = $prompt_builder->generate_text();
@@ -588,6 +589,10 @@ class Queue_Processor {
 
         self::record_product_result( $queue_id, $product_id, $template_id, $success, $skipped, $message );
 
+        if ( ! $success ) {
+            self::log_failure_to_debug_log( $queue_id, $product_id, $template_id, $message );
+        }
+
         // Check if complete.
         $total_processed = $progress['completed'] + $progress['failed'] + $progress['skipped'];
         
@@ -596,6 +601,29 @@ class Queue_Processor {
         }
 
         do_action( 'product_data_generator_item_processed', $queue_id, $product_id, $template_id, $success, $message );
+    }
+
+    /**
+     * Log queue item failures to the WordPress debug log.
+     *
+     * @param int    $queue_id Queue post ID.
+     * @param int    $product_id Product ID.
+     * @param string $template_id Template ID.
+     * @param string $message Failure message.
+     */
+    private static function log_failure_to_debug_log( $queue_id, $product_id, $template_id, $message ) {
+        $queue = get_post( $queue_id );
+        $product = wc_get_product( $product_id );
+
+        error_log( sprintf(
+            '[Product Data Generator] Queue item failed | Queue #%d - %s | Product #%d - %s | Template: %s | Message: %s',
+            $queue_id,
+            $queue ? $queue->post_title : 'Unknown Queue',
+            $product_id,
+            $product ? $product->get_name() : 'Unknown Product',
+            $template_id,
+            $message
+        ) );
     }
 
     /**

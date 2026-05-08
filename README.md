@@ -266,6 +266,14 @@ See [examples.php](examples.php) for more complete examples.
 
 ## Troubleshooting
 
+### Recent Queue Failure Explanation
+
+In May 2026, a product queue failed because the AI service stopped accepting one of the optional tuning settings this plugin was sending with each request: `temperature`.
+
+In client-friendly terms: the plugin was still asking the AI service to use an older "creativity level" control. The AI provider changed its rules for the current model and now rejects that setting. Because every book in the queue used the same AI request format, each book failed for the same reason. The products were not bad, and the queue itself was not broken; the AI request needed to be updated to match the provider's current requirements.
+
+Version `0.0.4` stops sending that setting by default and adds clearer logging when a queue item fails, so future issues should show a useful reason in the WordPress debug log.
+
 ### Common Issues
 
 **"Template not found"**
@@ -340,7 +348,12 @@ GNU General Public License for more details.
 
 ## Changelog
 
-### 0.0.1 (Current)
+### 0.0.4 (Current)
+- Stop sending the deprecated `temperature` parameter by default to avoid 400 errors from newer AI models.
+- Share AI request setup between manual generation, generator calls, and queue processing.
+- Log manual generation and queue item failures to the WordPress debug log with queue, product, template, and error details.
+
+### 0.0.1
 - Initial release
 - Template/config system implementation
 - Three built-in templates
