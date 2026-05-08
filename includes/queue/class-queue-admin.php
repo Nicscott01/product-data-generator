@@ -330,7 +330,7 @@ class Queue_Admin {
         ?>
         <div class="pdg-templates-config">
             <p class="description">
-                <?php esc_html_e( 'Select which templates to generate, and configure individual settings for each.', 'product-data-generator' ); ?>
+                <?php esc_html_e( 'Select which templates to generate, and whether each should be skipped when it already has generated content.', 'product-data-generator' ); ?>
             </p>
 
             <table class="pdg-templates-table">
@@ -339,7 +339,6 @@ class Queue_Admin {
                         <th class="check-column"></th>
                         <th><?php esc_html_e( 'Template', 'product-data-generator' ); ?></th>
                         <th><?php esc_html_e( 'Skip if Generated', 'product-data-generator' ); ?></th>
-                        <th><?php esc_html_e( 'Temperature', 'product-data-generator' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -348,7 +347,6 @@ class Queue_Admin {
                         $config = isset( $template_config[ $template_id ] ) ? $template_config[ $template_id ] : [];
                         $enabled = isset( $config['enabled'] ) ? $config['enabled'] : false;
                         $skip_if_generated = isset( $config['skip_if_generated'] ) ? $config['skip_if_generated'] : true;
-                        $temperature = isset( $config['temperature'] ) ? $config['temperature'] : 0.7;
                         ?>
                         <tr class="pdg-template-row <?php echo $enabled ? 'is-enabled' : ''; ?>">
                             <td class="check-column">
@@ -378,17 +376,6 @@ class Queue_Admin {
                                         <?php disabled( ! $enabled ); ?>>
                                     <?php esc_html_e( 'Skip', 'product-data-generator' ); ?>
                                 </label>
-                            </td>
-                            <td class="pdg-template-temp">
-                                <input 
-                                    type="number" 
-                                    name="pdg_templates[<?php echo esc_attr( $template_id ); ?>][temperature]"
-                                    value="<?php echo esc_attr( $temperature ); ?>"
-                                    min="0"
-                                    max="2"
-                                    step="0.1"
-                                    class="small-text"
-                                    <?php disabled( ! $enabled ); ?>>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -439,8 +426,7 @@ class Queue_Admin {
                 color: #646970;
                 font-weight: normal;
             }
-            .pdg-template-skip label,
-            .pdg-template-temp {
+            .pdg-template-skip label {
                 font-size: 12px;
             }
         </style>
@@ -453,7 +439,7 @@ class Queue_Admin {
                     var isEnabled = $(this).is(':checked');
                     
                     $row.toggleClass('is-enabled', isEnabled);
-                    $row.find('input[type="checkbox"]:not(.pdg-template-checkbox), input[type="number"]').prop('disabled', !isEnabled);
+                    $row.find('input[type="checkbox"]:not(.pdg-template-checkbox)').prop('disabled', !isEnabled);
                 });
             });
         </script>
@@ -1028,7 +1014,6 @@ class Queue_Admin {
                 $template_config[ $template_id ] = [
                     'enabled'           => isset( $config['enabled'] ) ? true : false,
                     'skip_if_generated' => isset( $config['skip_if_generated'] ) ? true : false,
-                    'temperature'       => isset( $config['temperature'] ) ? floatval( $config['temperature'] ) : 0.7,
                 ];
             }
             

@@ -14,17 +14,6 @@
     $(document).ready(function() {
         
         /**
-         * Handle temperature slider changes
-         */
-        $(document).on('input', '.pdg-temp-slider', function() {
-            const $slider = $(this);
-            const $item = $slider.closest('.pdg-template-item');
-            const $valueDisplay = $item.find('.pdg-temp-value');
-            
-            $valueDisplay.text($slider.val());
-        });
-        
-        /**
          * Handle Generate button clicks
          */
         $(document).on('click', '.pdg-generate-btn', function(e) {
@@ -38,7 +27,6 @@
             
             const templateId = $button.data('template-id');
             const productId = $button.data('product-id');
-            const temperature = parseFloat($item.find('.pdg-temp-slider').val()) || 0.7;
 
             // Reset status
             $status.removeClass('success error').text('');
@@ -60,8 +48,7 @@
                     action: 'pdg_generate_content',
                     nonce: pdgAdmin.nonce,
                     product_id: productId,
-                    template_id: templateId,
-                    temperature: temperature
+                    template_id: templateId
                 },
                 success: function(response) {
                     if (response.success) {

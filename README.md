@@ -131,7 +131,6 @@ $config = [
     ],
     'ai_settings' => [
         'model' => 'gpt-4',
-        'temperature' => 0.7,
         'max_tokens' => 1000,
     ],
     'output_format' => 'html',
@@ -272,7 +271,7 @@ In May 2026, a product queue failed because the AI service stopped accepting one
 
 In client-friendly terms: the plugin was still asking the AI service to use an older "creativity level" control. The AI provider changed its rules for the current model and now rejects that setting. Because every book in the queue used the same AI request format, each book failed for the same reason. The products were not bad, and the queue itself was not broken; the AI request needed to be updated to match the provider's current requirements.
 
-Version `0.0.4` stops sending that setting by default and adds clearer logging when a queue item fails, so future issues should show a useful reason in the WordPress debug log.
+Version `0.0.4` stopped sending that setting by default and added clearer logging when a queue item fails, so future issues should show a useful reason in the WordPress debug log. Version `0.0.5` removes the temperature controls from the admin interface so the settings shown to staff match what the AI service now supports.
 
 ### Common Issues
 
@@ -348,7 +347,11 @@ GNU General Public License for more details.
 
 ## Changelog
 
-### 0.0.4 (Current)
+### 0.0.5 (Current)
+- Remove temperature controls from the product editor and queue admin interfaces.
+- Stop submitting temperature values from manual generation UI.
+
+### 0.0.4
 - Stop sending the deprecated `temperature` parameter by default to avoid 400 errors from newer AI models.
 - Share AI request setup between manual generation, generator calls, and queue processing.
 - Log manual generation and queue item failures to the WordPress debug log with queue, product, template, and error details.
