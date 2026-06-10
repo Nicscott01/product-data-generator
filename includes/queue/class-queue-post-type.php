@@ -15,7 +15,6 @@ class Queue_Post_Type {
      * Initialize the queue post type
      */
     public static function init() {
-        error_log( 'PDG Queue: Queue_Post_Type::init() called' );
         self::register_post_type();
         self::register_post_statuses();
         add_filter( 'display_post_states', [ __CLASS__, 'display_post_states' ], 10, 2 );
@@ -27,8 +26,6 @@ class Queue_Post_Type {
      * Register the queue custom post type
      */
     public static function register_post_type() {
-        error_log( 'PDG Queue: Registering pdg_queue post type' );
-        
         $labels = [
             'name'                  => __( 'Bulk Generation Queues', 'product-data-generator' ),
             'singular_name'         => __( 'Queue', 'product-data-generator' ),
