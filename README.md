@@ -347,7 +347,11 @@ GNU General Public License for more details.
 
 ## Changelog
 
-### 0.0.5 (Current)
+### 0.0.6 (Current)
+- Serialize per-product queue pre-tasks so AI generation waits for product data fetching to finish.
+- Reschedule template jobs that encounter an in-progress pre-task for the same product.
+
+### 0.0.5
 - Remove temperature controls from the product editor and queue admin interfaces.
 - Stop submitting temperature values from manual generation UI.
 

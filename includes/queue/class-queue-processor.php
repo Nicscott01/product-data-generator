@@ -427,19 +427,29 @@ class Queue_Processor {
         // Use transient to track across multiple Action Scheduler executions
         $run_token = (string) get_post_meta( $queue_id, '_pdg_run_token', true );
         $processed_key = 'pdg_processed_' . md5( $queue_id . '|' . $product_id . '|' . $run_token );
+        $processing_key = 'pdg_processing_' . md5( $queue_id . '|' . $product_id . '|' . $run_token );
         $already_processed = get_transient( $processed_key );
         
         if ( empty( $product_state['pre_tasks_ran'] ) && ! $already_processed ) {
-            $pre_task_result = self::run_pre_generation_tasks( $product_id, $task_options, $queue_id );
+            if ( ! self::acquire_product_pre_task_lock( $processing_key ) ) {
+                self::reschedule_product_processing( $queue_id, $product_id, $template_id );
+                return;
+            }
 
-            $product_state['pre_tasks_ran'] = true;
-            $product_state['pre_task_failed'] = is_wp_error( $pre_task_result );
-            $product_state['pre_task_message'] = is_wp_error( $pre_task_result ) ? $pre_task_result->get_error_message() : '';
+            try {
+                $pre_task_result = self::run_pre_generation_tasks( $product_id, $task_options, $queue_id );
 
-            self::save_product_state( $queue_id, $product_id, $product_state );
+                $product_state['pre_tasks_ran'] = true;
+                $product_state['pre_task_failed'] = is_wp_error( $pre_task_result );
+                $product_state['pre_task_message'] = is_wp_error( $pre_task_result ) ? $pre_task_result->get_error_message() : '';
 
-            // Mark as processed for this queue (expires in 1 hour to handle paused/resumed queues)
-            set_transient( $processed_key, true, HOUR_IN_SECONDS );
+                self::save_product_state( $queue_id, $product_id, $product_state );
+
+                // Mark as processed for this queue (expires in 1 hour to handle paused/resumed queues)
+                set_transient( $processed_key, true, HOUR_IN_SECONDS );
+            } finally {
+                self::release_product_pre_task_lock( $processing_key );
+            }
         } elseif ( empty( $product_state['pre_tasks_ran'] ) ) {
             $product_state = self::get_product_state( $queue_id, $product_id );
         }
@@ -539,6 +549,65 @@ class Queue_Processor {
         } catch ( \Exception $e ) {
             self::log_result( $queue_id, $product_id, $template_id, false, $e->getMessage() );
         }
+    }
+
+    /**
+     * Acquire an atomic per-product pre-task lock.
+     *
+     * @param string $lock_key Lock key.
+     * @return bool True when the lock was acquired.
+     */
+    private static function acquire_product_pre_task_lock( $lock_key ) {
+        $option_name = self::get_product_pre_task_lock_option_name( $lock_key );
+        $now = time();
+
+        if ( add_option( $option_name, $now, '', 'no' ) ) {
+            return true;
+        }
+
+        $locked_at = (int) get_option( $option_name, 0 );
+
+        if ( $locked_at && ( $now - $locked_at ) > ( 10 * MINUTE_IN_SECONDS ) ) {
+            delete_option( $option_name );
+            return (bool) add_option( $option_name, $now, '', 'no' );
+        }
+
+        return false;
+    }
+
+    /**
+     * Release a per-product pre-task lock.
+     *
+     * @param string $lock_key Lock key.
+     */
+    private static function release_product_pre_task_lock( $lock_key ) {
+        delete_option( self::get_product_pre_task_lock_option_name( $lock_key ) );
+    }
+
+    /**
+     * Get the option name used for a per-product pre-task lock.
+     *
+     * @param string $lock_key Lock key.
+     * @return string
+     */
+    private static function get_product_pre_task_lock_option_name( $lock_key ) {
+        return '_pdg_pre_task_lock_' . md5( $lock_key );
+    }
+
+    /**
+     * Reschedule a product/template when another worker is still running that product's pre-tasks.
+     *
+     * @param int    $queue_id Queue post ID.
+     * @param int    $product_id Product ID.
+     * @param string $template_id Template ID.
+     */
+    private static function reschedule_product_processing( $queue_id, $product_id, $template_id ) {
+        as_schedule_single_action(
+            time() + 10,
+            self::HOOK_PROCESS_PRODUCT,
+            [ $queue_id, $product_id, $template_id ],
+            'pdg_queue_' . $queue_id
+        );
     }
 
     /**
