@@ -248,6 +248,8 @@ class AI_Generator {
      * @param array      $context Request context.
      */
     public static function apply_settings_to_prompt_builder( $prompt_builder, $temperature = null, $max_tokens = null, array $context = [] ) {
+        self::apply_model_preferences_to_prompt_builder( $prompt_builder, $context );
+
         if ( null !== $max_tokens ) {
             $prompt_builder->using_max_tokens( (int) $max_tokens );
         }
@@ -265,6 +267,48 @@ class AI_Generator {
 
         if ( $send_temperature && null !== $temperature ) {
             $prompt_builder->using_temperature( (float) $temperature );
+        }
+    }
+
+    /**
+     * Apply preferred AI models to avoid upstream default model selection surprises.
+     *
+     * @param object $prompt_builder Prompt builder instance.
+     * @param array  $context Request context.
+     */
+    private static function apply_model_preferences_to_prompt_builder( $prompt_builder, array $context = [] ) {
+        if ( ! is_callable( [ $prompt_builder, 'using_model_preference' ] ) ) {
+            return;
+        }
+
+        /**
+         * Filter preferred AI models for Product Data Generator requests.
+         *
+         * Values follow WP AI Client's `using_model_preference()` format: model IDs
+         * as strings, or provider/model tuples such as [ 'anthropic', 'claude-opus-4-8' ].
+         *
+         * @param array $model_preferences Preferred models in priority order.
+         * @param array $context Request context.
+         */
+        $model_preferences = apply_filters(
+            'product_data_generator_model_preferences',
+            [
+                [ 'anthropic', 'claude-opus-4-8' ],
+            ],
+            $context
+        );
+
+        if ( ! is_array( $model_preferences ) || empty( $model_preferences ) ) {
+            return;
+        }
+
+        try {
+            $prompt_builder->using_model_preference( ...$model_preferences );
+        } catch ( \Throwable $e ) {
+            error_log( sprintf(
+                '[Product Data Generator] Ignoring invalid model preferences: %s',
+                $e->getMessage()
+            ) );
         }
     }
 
